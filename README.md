@@ -1,0 +1,2 @@
+# windmon
+Monitoring local wind
