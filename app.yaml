@@ -1,0 +1,13 @@
+# when using gcloud preview app deploy
+# you specify app.yaml
+# no need for application and version
+
+runtime: go
+api_version: go1
+
+inbound_services:
+- mail
+
+handlers:
+- url: /.*
+  script: _go_app

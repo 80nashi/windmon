@@ -1,0 +1,5 @@
+# https://cloud.google.com/appengine/docs/go/config/cron#Go_app_yaml_The_schedule_format
+cron:
+- description: 15 minutely get wind info and send out email
+  url: /update_wind
+  schedule: every 15 minutes
