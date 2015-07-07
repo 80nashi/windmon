@@ -1,5 +1,6 @@
 # https://cloud.google.com/appengine/docs/go/config/cron#Go_app_yaml_The_schedule_format
 cron:
-- description: 15 minutely get wind info and send out email
+# data source updated xx:25 and xx:55
+- description: at the top and bottom of oclock
   url: /update_wind
-  schedule: every 15 minutes
+  schedule: every 30 minutes synchronized

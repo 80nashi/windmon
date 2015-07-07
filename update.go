@@ -1,7 +1,6 @@
 package windmon
 
 import (
-  "bytes"
   // These do not work in GAE environment : https://github.com/oschwald/maxminddb-golang/issues/11
   // 
   // "code.google.com/p/go.text/encoding/japanese"
@@ -30,7 +29,10 @@ import (
   // http://kaorumori.hatenadiary.com/entry/2015/04/03/143231
   mahonia "code.google.com/p/mahonia"
   
+  "bytes"
   "fmt"
+  "image/png"
+  "image/jpeg"
   "net/http"
   "strings"
 
@@ -43,26 +45,31 @@ import (
 const (
   MICS_URL = MICS_SHIMODA_URL
   MICS_SHIMODA_URL = "http://www6.kaiho.mlit.go.jp/03kanku/shimoda/"
-  MICS_SHIMODA_IMG_URL = "http://www6.kaiho.mlit.go.jp/map/kisho_genkyo/03kanku_shimoda.gif"
+  MICS_SHIMODA_IMG_URL = "http://www6.kaiho.mlit.go.jp/map/kisho_genkyo/03kanku_shimoda.gif" // this is really a png. wtf
   MICS_SUKA_URL = "http://www6.kaiho.mlit.go.jp/03kanku/yokosuka/kisyou.html"
   
   MICS_TABLE_XPATH = "//node()[@id='kishoInfo']//thead"
   MICS_DATE_XPATH = "//node()[@id='kisyouDate']"
 )
 
+type WindData struct {
+  Date string
+  Table string
+  Img []byte
+}
+
 // http://www.jma.go.jp/jp/amedas_h/today-46211.html
 // http://www6.kaiho.mlit.go.jp/03kanku/shimoda/ shift-jis
 // http://www6.kaiho.mlit.go.jp/03kanku/yokosuka/kisyou.html
-func getWindData(c appengine.Context) (string, string) {
+func getWindData(c appengine.Context) (*WindData, error) {
+  windData := &WindData{}
   client := urlfetch.Client(c)
   resp, err := client.Get(MICS_URL)
   if err != nil {
-    c.Errorf("Could not get data from %s: %v", MICS_URL, err)
-    return "N/A " + MICS_URL, ""
+    return nil, fmt.Errorf("could not get %s: %v", MICS_URL, err)
   }
   if resp.StatusCode != 200 {
-    c.Infof("Could not get data from %s: %s", MICS_URL, resp.Status)
-    return fmt.Sprintf("Status is %s", resp.Status), ""
+    return nil, fmt.Errorf("server responded non-200: %s, %s", MICS_URL, resp.Status)
   }
   
   defer resp.Body.Close()
@@ -74,8 +81,7 @@ func getWindData(c appengine.Context) (string, string) {
   doc, err := xhtml.Parse(strings.NewReader(content))
   // https://godoc.org/golang.org/x/net/html
   if err != nil {
-    c.Errorf("Could not parse HTML for %s: %v", MICS_URL, err)
-    return "Could not parse HTML", ""
+    return nil, fmt.Errorf("could not parse HTML for %s: %v", MICS_URL, err)
   }
   var b bytes.Buffer
   xhtml.Render(&b, doc)
@@ -83,33 +89,68 @@ func getWindData(c appengine.Context) (string, string) {
   
   root, err := xmlpath.ParseHTML(fixed)
   if err != nil {
-    c.Errorf("Could not parse HTML: %s\n Error: %v", content, err)
-    return "ParseHTML NG", ""
+    return nil, fmt.Errorf("could not parse HTML: %s\n Error: %v", content, err)
   }
   
   path := xmlpath.MustCompile(MICS_TABLE_XPATH)
   table, ok := path.String(root)
   if !ok {
-    return "NG", "NG"
+    return nil, fmt.Errorf("could not find table path")
   }
   c.Infof("read table %s", table)
+  windData.Table = table
   
   path = xmlpath.MustCompile(MICS_DATE_XPATH)
   date, ok := path.String(root)
   if !ok {
-    return "NG", table
+    return nil, fmt.Errorf("could not find date")
   }
-  return date, table
+  windData.Date = date
+  
+  imgResp, err := client.Get(MICS_SHIMODA_IMG_URL)
+  if err != nil {
+    return nil, fmt.Errorf("unable to get img from %s: %v", MICS_SHIMODA_IMG_URL, err)
+  }
+  if imgResp.StatusCode != 200 {
+    return nil, fmt.Errorf("img server responded non-200: %s, %s", MICS_SHIMODA_IMG_URL, imgResp.Status)
+  }
+  defer imgResp.Body.Close()
+  
+  // XXX need to resize the image for Gratina2
+  // JPG is more available: http://media.kddi.com/app/publish/torisetsu/pdf/gratina2_torisetsu_shousai.pdf
+  // go image packages
+  // image/gif, image/jpeg: http://golang.org/pkg/image/gif/#Encode
+  
+  pngImg, err := png.Decode(imgResp.Body)
+  if err != nil {
+    // we can do with only text info
+    c.Infof("No image attached. Could not decode png: %v", err)
+    return windData, nil
+  }
+  buf.Reset()
+  err = jpeg.Encode(buf, pngImg, &jpeg.Options{Quality: 75})
+  if err != nil {
+    // we can do with text info only
+    c.Infof("No image attached. Could not encode to jpeg: %v", err)
+    return windData, nil
+  }
+  windData.Img = buf.Bytes()
+  return windData, nil
 }
 
-func sendUpdate(addr, subj, body string, c appengine.Context) {
+func sendUpdate(addr string, w *WindData, c appengine.Context) error {
   msg := &gaeMail.Message{
     Sender: "news@windmon-miura.appspotmail.com",
     To: []string{addr},
-    Subject: "Wind news " + subj,
-    Body: body,
+    Subject: "Wind news " + w.Date,
+    Body: w.Table,
+    Attachments: []gaeMail.Attachment{{
+                   Name: "img.jpg",
+                   Data: w.Img,
+                   ContentID: "<windmon-miura-img>",
+                 },},
   }
-  gaeMail.Send(c, msg)
+  return gaeMail.Send(c, msg)
 }
 
 func updateWind(w http.ResponseWriter, r *http.Request) {
@@ -128,9 +169,15 @@ func updateWind(w http.ResponseWriter, r *http.Request) {
     return
   }
   
-  date, table := getWindData(c)
+  wind, err := getWindData(c)
+  if err != nil {
+    c.Errorf("Could not get wind data: %v", err)
+    return
+  }
   for _, u := range userStatus {
-    c.Infof("Sending update to %s. msg = %s / %s", u.Email, date, table)
-    sendUpdate(u.Email, date, table, c)
+    c.Infof("Sending update to %s. msg = %s / %s", u.Email, wind.Date, wind.Table)
+    if err := sendUpdate(u.Email, wind, c); err != nil {
+      c.Errorf("Unable to send email to %s: %v", u.Email, err)
+    }
   }
 }
