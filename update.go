@@ -34,6 +34,7 @@ import (
   "image/png"
   "image/jpeg"
   "net/http"
+  "regexp"
   "strings"
 
   "appengine"
@@ -97,8 +98,8 @@ func getWindData(c appengine.Context) (*WindData, error) {
   if !ok {
     return nil, fmt.Errorf("could not find table path")
   }
-  c.Infof("read table %s", table)
-  windData.Table = table
+	re := regexp.MustCompile("([^\n])\n")
+  windData.Table = re.ReplaceAllString(table, "$1 ")
   
   path = xmlpath.MustCompile(MICS_DATE_XPATH)
   date, ok := path.String(root)
