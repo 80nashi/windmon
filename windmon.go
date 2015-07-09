@@ -34,7 +34,7 @@ type UserStatus struct {
   Status string
 }
 
-var myRegister = regist.MailHandler{registEmail}
+var myRegister = regist.MailHandler{processEmail}
 
 func getSubCode() string {
   r := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -151,7 +151,7 @@ func sendSubscription(addr string, c appengine.Context) {
   c.Infof("Wrote confirmation successfully for %s, %s", addr, code)
 }
 
-func registEmail(msg *mail.Message, c appengine.Context) {
+func processEmail(msg *mail.Message, c appengine.Context) {
   c.Debugf("Yay, my own handler!  email from %v", msg.Header)
   
   // parse from address. return if error

@@ -3,4 +3,4 @@ cron:
 # data source updated xx:25 and xx:55
 - description: at the top and bottom of oclock
   url: /update_wind
-  schedule: every 30 minutes synchronized
+  schedule: every 30 minutes from 0:15 to 23:45
