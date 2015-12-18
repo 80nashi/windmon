@@ -1,0 +1,19 @@
+# titus module
+# To check compile errors
+#  $ cd ~/workspace
+#  $ goapp build titus
+#
+# To deploy
+#  $ gcloud preview app deploy titus/titus.yaml
+#
+# no need for application: when using gcloud preview app deploy
+# no need for vewsion: when using gcloud ...
+module: titus
+runtime: go
+api_version: go1
+instance_class: F2
+automatic_scaling:
+
+handlers:
+- url: /.*
+  script: _go_app
