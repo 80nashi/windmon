@@ -8,5 +8,7 @@ cron:
 
 - description: at the quarters of the clock
   url: /collect
-  schedule: every 15 minutes from 0:05 to 23:55
+  # 15 minute interval keep an instance up and running for long time
+  # exceeding free quota budget (28 instance hours / day)
+  schedule: every 30 minutes from 0:05 to 23:55
   target: titus
