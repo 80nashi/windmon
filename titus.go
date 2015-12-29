@@ -43,6 +43,8 @@ import (
 )
 
 const (
+  titusDataSourceName = "titus"
+  
   TitusCgiBaseUrl = "http://www6.kaiho.mlit.go.jp/tokyowan/cgi-local/titus"
   TitusCgiUrl = TitusCgiBaseUrl + "/weg.cgi"
   // http://www.w3schools.com/xsl/xpath_syntax.asp
@@ -61,8 +63,10 @@ type TitusData struct {
 }
 
 func init() {
-  http.HandleFunc("/collect", collectHandlerDummy)
-  http.HandleFunc("/collect_real", collectHandler)
+  ds := generateDataSource(titusDataSourceName)
+  registerSource(titusDataSourceName, ds)
+  http.HandleFunc(ds.CollectorUrl, collectHandlerDummy)
+  http.HandleFunc(ds.AlerterUrl, collectHandlerDummy)
 }
 
 func reparseHtml(s string) (*xmlpath.Node, error) {

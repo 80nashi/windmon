@@ -36,6 +36,51 @@ type UserStatus struct {
 
 var myRegister = regist.MailHandler{processEmail}
 
+/*
+Borrowing registerDemo() pattern from google go api client libray.
+https://github.com/google/google-api-go-client/blob/master/examples/main.go
+https://github.com/google/google-api-go-client/blob/master/examples/bigquery.go
+
+- Each data source registers its collector and alerter URL paths as well as
+  GAE request handler for the paths in its init().
+  I.e.;
+    func init() {
+      ds := generateDataSource("this_ds")
+      registerSource(ds)
+      http.HandleFunc(ds.CollectorUrl, thisDsCollectHandler)
+      http.HandleFunc(ds.AlerterUrl, thisDsAlertHandler)
+    }
+- Each data source's collector or alerter URL is called via GAE TaskQueue,
+  ensuring paralle execution of multiple data sources.
+- i.e.; /collect -> windmon.go -> taskqueue -> /collect_this_ds
+  (alerters work the same way through /alert)
+  
+Todo:
+- Is there a way for windmon.go to register all collectors and alerters
+  on behalf of each data source's inint()?
+  GAE does not have func main() to be executed after all init() is called.
+*/
+
+var dataSource = make(map[string]DataSource)
+type DataSource struct {
+  CollectorUrl string
+  AlerterUrl string
+}
+
+func registerSource(name string, ds DataSource) {
+  if _, ok := dataSource[name]; ok {
+    panic(name + " already registered")
+  }
+  dataSource[name] = ds
+}
+
+func generateDataSource(name string) DataSource {
+  return DataSource {
+    CollectorUrl: "/ds/" + name + "/collect",
+    AlerterUrl: "/ds/" + name + "/alert",
+  }
+}
+
 func getSubCode() string {
   r := rand.New(rand.NewSource(time.Now().UnixNano()))
   b := make([]byte, 32)
@@ -207,6 +252,12 @@ func processEmail(msg *mail.Message, c appengine.Context) {
   return
 }
 
+func listDSHandler(w http.ResponseWriter, r *http.Request) {
+  for key, ds := range dataSource {
+    fmt.Fprintf(w, "data source: %s %+v\n", key, ds)
+  }
+}
+
 func init() {
   // https://cloud.google.com/appengine/docs/go/mail/?hl=ja
   // http://golang.org/pkg/net/mail/
@@ -216,6 +267,8 @@ func init() {
   http.HandleFunc("/update_wind", updateWind)
   
   http.HandleFunc("/", handler)
+  http.HandleFunc("/listDataSources", listDSHandler)
+  
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
